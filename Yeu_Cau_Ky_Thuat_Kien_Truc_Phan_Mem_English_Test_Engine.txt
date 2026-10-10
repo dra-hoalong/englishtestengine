@@ -1,0 +1,824 @@
+YÊU CẦU KỸ THUẬT & KIẾN TRÚC PHẦN MỀM
+ENGLISH TEST ENGINE
+Phiên bản đặc tả hợp nhất
+
+1. MỤC ĐÍCH CỦA TÀI LIỆU
+
+Tài liệu này là đặc tả kỹ thuật và kiến trúc phần mềm chính thức cho English Test Engine. Tài liệu được xây dựng từ toàn bộ yêu cầu ban đầu, các lần rà soát mã nguồn, các lỗi đã phát hiện, các thay đổi chức năng, các quyết định kiến trúc và các quy tắc vận hành đã được thống nhất trong quá trình phát triển.
+
+Mục tiêu của tài liệu là tạo ra một chuẩn duy nhất để phát triển, sửa lỗi, kiểm thử và bảo trì English Test Engine về lâu dài. Mọi thay đổi trong mã nguồn phải tuân thủ tài liệu này. Khi có xung đột giữa một đoạn code cũ và đặc tả hiện tại, đặc tả hiện tại được ưu tiên.
+
+English Test Engine là một ứng dụng web cá nhân dùng để nạp các bài kiểm tra tiếng Anh từ Excel, đưa bài vào hàng chờ, cho phép người dùng xem trước và làm bài trực tiếp trên trình duyệt, chấm điểm theo các thuật toán xác định trước, hỗ trợ người dùng tự chấm câu REWRITE, lưu kết quả, cung cấp Dashboard tổng hợp và cho phép sao lưu/khôi phục dữ liệu bằng Excel.
+
+Ứng dụng được thiết kế cho một người dùng cá nhân. Không có mô hình giáo viên/học sinh, không có tài khoản, không có server bắt buộc, không có AI và không có chức năng tự sinh đề hoặc tự sáng tạo nội dung.
+
+2. PHẠM VI HỆ THỐNG
+
+English Test Engine chỉ xử lý dữ liệu mà người dùng cung cấp. Hệ thống không tạo nội dung bài thi mới, không tự thay đổi đáp án chuẩn, không suy luận đáp án bằng AI và không dùng các dịch vụ bên ngoài để chấm điểm.
+
+Luồng nghiệp vụ chính gồm: nạp đề Excel; kiểm tra và xác thực dữ liệu; đưa bài thi vào hàng chờ FIFO; xem thông tin bài; bắt đầu bài thi; random câu hỏi trong từng Session theo quy tắc; random options đối với câu trắc nghiệm; làm bài; tạm dừng và tiếp tục trong cùng phiên trình duyệt; kiểm tra câu chưa trả lời; nộp bài; tự chấm REWRITE nếu có; chốt kết quả; xem lại bài trong tối đa 72 giờ; giữ summary lâu dài để tính thống kê; dọn dữ liệu chi tiết hết hạn; sao lưu; khôi phục; và xóa bài chưa làm khỏi hàng chờ khi người dùng không còn nhu cầu.
+
+Các chức năng không thuộc phạm vi gồm: thi lại cùng một bài đã hoàn thành, quản lý nhiều attempt cho một test, tìm kiếm/lọc thư viện bài quy mô lớn, phát hiện trùng nội dung bằng AI, versioning nội dung đề, import history/undo import, separate mistake review, time-per-question analytics, hệ thống role người dùng, server backend bắt buộc và đồng bộ dữ liệu qua cloud.
+
+3. NGUYÊN TẮC KIẾN TRÚC CỐT LÕI
+
+3.1. Client-Side và Offline-First
+
+Ứng dụng phải hoạt động chủ yếu phía trình duyệt. Dữ liệu cá nhân, bài thi, kết quả và trạng thái phải được quản lý cục bộ. Không được phụ thuộc vào API bên ngoài cho việc làm bài hoặc chấm điểm.
+
+Yêu cầu triển khai cuối cùng là dạng single-file web app. File chạy chính là HTML độc lập, chứa HTML template, CSS cần thiết và JavaScript engine. Nếu sử dụng thư viện như SheetJS, Tailwind hoặc icon library trong môi trường phát triển thì bản phân phối cuối cùng phải có phương án đóng gói local/bundled tương ứng nếu mục tiêu Offline-First tuyệt đối được kích hoạt; không được xem việc gọi CDN là trạng thái offline hoàn chỉnh.
+
+3.2. Deterministic Execution
+
+Mọi thao tác chấm điểm phải xác định được bằng thuật toán rõ ràng. Với cùng một đề và cùng một câu trả lời người dùng, kết quả phải luôn giống nhau. Không sử dụng AI hoặc mô hình xác suất cho việc chấm điểm.
+
+3.3. Domain Model tách biệt khỏi UI
+
+Dữ liệu bài thi, trạng thái phiên làm bài, dữ liệu kết quả và giao diện phải được tổ chức thành các lớp logic riêng biệt. UI không được dùng các giá trị trình bày như nhãn A/B/C/D hoặc số thứ tự hiển thị làm khóa dữ liệu nghiệp vụ.
+
+3.4. Một bài thi chỉ có một lượt hoàn thành
+
+Mỗi test là một đơn vị làm bài độc lập. Một test chỉ có một lần hoàn thành trong hệ thống. Sau khi bài đã được submit, test đó được xem là đã hoàn thành và không được mở lại để làm lại.
+
+Nếu người dùng muốn làm lại cùng nội dung, người dùng phải nạp lại đề và đổi test_id. Nếu nội dung giống hệt nhưng test_id khác thì đó là hai bài thi khác nhau theo đúng dữ liệu của hệ thống.
+
+3.5. Active Session không phải dữ liệu lịch sử
+
+Phiên làm bài đang diễn ra chỉ tồn tại trong bộ nhớ của phiên ứng dụng hiện tại. Không được lưu một attempt chưa hoàn thành theo cách cho phép phục hồi sau refresh hoặc mở lại ứng dụng.
+
+Nếu người dùng refresh, đóng tab, đóng trình duyệt hoặc rời ứng dụng khi bài chưa được submit thì lượt làm bị hủy và không tạo kết quả. Tất cả câu trả lời chưa submit bị loại bỏ.
+
+3.6. Dashboard là trung tâm tổng quan
+
+Ứng dụng ưu tiên một Dashboard chính có đầy đủ thông tin cần thiết thay vì xây dựng hệ thống điều hướng nhiều tầng. Dashboard phải hiển thị tổng quan trạng thái hàng chờ, kết quả gần đây và thống kê tổng hợp nhưng không biến thành một thư viện bài thi phức tạp.
+
+4. KIẾN TRÚC TRẠNG THÁI VÀ MÔ HÌNH DỮ LIỆU
+
+Hệ thống phải phân biệt ít nhất bốn loại dữ liệu logic: bài thi chưa làm, phiên làm bài đang hoạt động, summary của bài đã hoàn thành và chi tiết bài đã hoàn thành còn trong thời gian xem lại.
+
+4.1. Queue Test Definition
+
+Một bài chưa làm phải có cấu trúc logic tối thiểu gồm testId, testTitle, timeLimit, sessions và thứ tự nạp vào hàng chờ. Thứ tự trong queue phải giữ đúng FIFO: bài nạp trước xuất hiện trước, bài nạp sau xuất hiện sau.
+
+4.2. Session Definition
+
+Mỗi test chứa một danh sách Session. Session phải giữ đúng thứ tự xuất hiện trong Excel. Không được random thứ tự Session.
+
+Mỗi Session chứa sessionName và danh sách question definitions. Session không phải là một attempt và không có trạng thái hoàn thành riêng.
+
+4.3. Question Definition
+
+Mỗi câu hỏi phải có ít nhất các thuộc tính logic sau: questionId, sourceQNum, mechanic, stimulus, prompt, options, correctAnswer và explanation.
+
+sourceQNum chính là q_num trong Excel. sourceQNum chỉ là metadata nguồn để truy nguyên dữ liệu và không được dùng làm khóa lưu đáp án, không dùng để xác định thứ tự hiển thị sau random và không được dùng làm số câu hiển thị chính thức.
+
+questionId phải là định danh duy nhất trong phạm vi toàn bộ test. questionId phải độc lập với thứ tự hiển thị.
+
+4.4. Completion Summary
+
+Summary lâu dài của một bài đã hoàn thành phải lưu tối thiểu testId, testTitle, scorePercent, correctCount, totalQuestions, timeSpentSeconds và submittedAt. Hệ thống có thể bổ sung completionId, timezone, offset và các trường kỹ thuật khác nhưng không được tạo mô hình attempt history phức tạp.
+
+Summary được giữ lâu dài để tính thống kê tổng hợp. Summary hết hạn 72 giờ không xuất hiện thành danh sách bài cũ trên giao diện.
+
+4.5. Ephemeral Detail
+
+Chi tiết của bài đã hoàn thành chỉ được lưu tối đa 72 giờ kể từ thời điểm submit. Chi tiết gồm dữ liệu cần để Review như questionId, displayNumber, mechanic, prompt, stimulus nếu cần, userAnswer, correctAnswer, explanation và isCorrect.
+
+Sau 72 giờ, chi tiết phải bị xóa tự động. Summary vẫn tồn tại để thống kê.
+
+4.6. Active Session
+
+Active Session tồn tại trong memory của ứng dụng và có thể có các trường logic như testData, currentSessionIndex, userAnswers, displayOrder, sessionStartedAt, elapsedSeconds, paused, pauseStartedAt, totalPausedSeconds, submitted và timer state.
+
+Active Session tuyệt đối không được ghi vào persistent storage theo cách cho phép phục hồi sau refresh/đóng ứng dụng.
+
+5. QUY CHUẨN FILE EXCEL ĐỀ THI
+
+5.1. Định dạng file
+
+Dữ liệu đề thi đầu vào chỉ được xử lý dưới dạng file Excel. Ứng dụng hỗ trợ file Excel thông dụng như .xlsx và .xls nếu thư viện đọc Excel được đóng gói đầy đủ.
+
+Không sử dụng JSON, CSV hoặc TXT làm định dạng dữ liệu đề thi của ứng dụng. TXT chỉ là định dạng dùng để bàn giao mã nguồn và đặc tả.
+
+5.2. Cấu trúc Sheet
+
+Mỗi đề nguồn phải có một Sheet dữ liệu chính. Schema chuẩn gồm đúng 11 cột A-K theo thứ tự logic sau:
+
+A. test_id
+B. test_title
+C. time_limit
+D. session_name
+E. stimulus
+F. q_num
+G. mechanic
+H. prompt
+I. options
+J. correct_answer
+K. explanation
+
+5.3. Ý nghĩa từng trường
+
+A. test_id là mã định danh bài thi. Tất cả dòng có cùng test_id thuộc cùng một test.
+
+B. test_title là tên hiển thị của bài thi.
+
+C. time_limit là thời gian làm bài tính bằng phút. Giá trị 0 nghĩa là không giới hạn thời gian.
+
+D. session_name là tên Session. Thứ tự Session phải được lấy theo thứ tự xuất hiện đầu tiên trong file.
+
+E. stimulus là văn bản chung cho một nhóm câu hỏi. Có thể để trống với câu không cần đoạn tư liệu chung.
+
+F. q_num là số câu trong dữ liệu nguồn. q_num phải hợp lệ trong phạm vi Session nhưng không phải display number sau random.
+
+G. mechanic là một trong năm giá trị: SELECT, GROUP_SELECT, FILL, REWRITE, REORDER.
+
+H. prompt là yêu cầu câu hỏi.
+
+I. options là danh sách phương án cho SELECT và GROUP_SELECT. Các phần tử được phân cách bằng dấu chấm phẩy hoặc dấu gạch đứng.
+
+J. correct_answer là đáp án chuẩn. Với FILL có thể chứa nhiều đáp án chấp nhận được, ngăn cách bằng dấu chấm phẩy hoặc dấu gạch đứng. Với SELECT/GROUP_SELECT phải khớp với một option sau khi chuẩn hóa.
+
+K. explanation là lời giải thích đáp án. Có thể để trống.
+
+6. VALIDATION EXCEL THEO QUAN HỆ VÀ ĐIỀU KIỆN
+
+Không được áp dụng quy tắc “mọi cột đều bắt buộc phải có nội dung ở mọi dòng”. Validation phải phụ thuộc vào mechanic và quan hệ giữa các trường.
+
+6.1. Validation chung
+
+test_id phải tồn tại, không được trống và phải là chuỗi hợp lệ.
+
+test_title phải tồn tại và không được trống.
+
+time_limit phải là số nguyên >= 0. Tất cả dòng của cùng test_id phải nhất quán về test_title và time_limit.
+
+session_name phải tồn tại và không được trống.
+
+q_num phải là số nguyên dương. Trong cùng một test và cùng một Session, q_num không được trùng.
+
+mechanic phải thuộc tập giá trị được phép.
+
+prompt phải có nội dung.
+
+6.2. SELECT
+
+options bắt buộc và phải có ít nhất hai lựa chọn hợp lệ. correct_answer bắt buộc và phải khớp một trong các option sau khi bỏ nhãn A./B./C./D. hoặc các tiền tố tương đương được cho phép.
+
+6.3. GROUP_SELECT
+
+options bắt buộc và phải có ít nhất hai lựa chọn hợp lệ. correct_answer phải khớp một option. stimulus phải được xử lý nhất quán đối với các câu thuộc cùng nhóm. Hệ thống phải bảo đảm quan hệ giữa câu hỏi, stimulus và session không bị phá vỡ trong quá trình parse.
+
+6.4. FILL
+
+correct_answer bắt buộc. options không bắt buộc. correct_answer có thể chứa nhiều đáp án hợp lệ phân cách bằng ; hoặc |. Sau khi split phải loại bỏ phần tử rỗng.
+
+6.5. REWRITE
+
+correct_answer bắt buộc để cung cấp đáp án gợi ý trong Review/Self-Grading. options không có ý nghĩa và không bắt buộc.
+
+6.6. REORDER
+
+correct_answer bắt buộc. options không có ý nghĩa và không bắt buộc.
+
+6.7. Quy tắc reject
+
+Nếu dữ liệu vi phạm điều kiện quan hệ của mechanic, import phải bị từ chối và hiển thị lỗi chỉ rõ số dòng Excel, trường bị lỗi và lý do. Không được âm thầm thay giá trị sai bằng mặc định.
+
+7. QUẢN LÝ TEST_ID VÀ IMPORT TRÙNG
+
+test_id là khóa định danh của một test trong hệ thống.
+
+Khi import, hệ thống phải kiểm tra trùng test_id với cả hàng chờ và các bài đã hoàn thành.
+
+Nếu test_id chưa tồn tại, giữ nguyên test_id.
+
+Nếu test_id đã tồn tại, hệ thống không được ghi đè dữ liệu cũ. Hệ thống tự động tạo ID mới theo hậu tố tăng dần, ví dụ TEST001, TEST001_2, TEST001_3, TEST001_4. Việc đổi ID phải được thông báo rõ cho người dùng sau khi import.
+
+Nếu người dùng tự đặt test_id khác nhau cho cùng một nội dung thì hệ thống xem đó là các bài khác nhau. Không có duplicate-content detection.
+
+Nếu người dùng xóa một bài chưa làm khỏi hàng chờ, bài đó không còn là test đang tồn tại trong hệ thống. Một lần import mới với test_id cũ có thể được phép dùng lại ID đó.
+
+8. HÀNG CHỜ BÀI THI
+
+Hàng chờ là FIFO queue. Bài được import trước phải nằm trước bài import sau.
+
+Không có chức năng tìm kiếm hoặc lọc nâng cao. Số lượng bài được giả định ở mức vừa phải.
+
+Mỗi thẻ bài trong queue cần hiển thị các thông tin cơ bản: thứ tự trong hàng chờ, tên bài, test_id, thời gian làm, số Session và tổng số câu hỏi.
+
+Mỗi bài phải có nút “Làm bài ngay” và một nút xóa nhỏ cạnh đó.
+
+Nút xóa phải có xác nhận trước khi thực hiện. Chỉ xóa bài chưa làm trong queue. Xóa queue item không tạo completion summary và không ảnh hưởng các bài đã hoàn thành.
+
+Nếu user chọn hủy trong hộp thoại xác nhận, dữ liệu không thay đổi.
+
+9. XEM TRƯỚC BÀI THI
+
+Trước khi bắt đầu, ứng dụng hiển thị một màn hình Preview.
+
+Preview phải hiển thị tên bài, test_id, thời gian, tổng số câu và danh sách Session theo đúng thứ tự, kèm số lượng câu mỗi Session.
+
+Preview phải cảnh báo rõ: mỗi test chỉ được làm một lần; bắt đầu bài sẽ tạo một active session; nếu rời bài khi chưa submit thì lượt làm sẽ bị hủy.
+
+Nút “Quay lại” chỉ quay lại Dashboard/Queue và không tạo kết quả.
+
+Nút “Bắt đầu làm bài” mới khởi tạo active session và timer.
+
+10. RANDOMIZATION VÀ DISPLAY NUMBERING
+
+10.1. Session order
+
+Session order tuyệt đối không được random. Thứ tự Session phải đúng thứ tự trong Excel.
+
+10.2. Question order
+
+Chỉ được random câu hỏi trong phạm vi từng Session. Không được trộn câu hỏi của hai Session khác nhau.
+
+Đối với GROUP_SELECT hoặc các câu có cùng stimulus, nhóm stimulus phải được coi là một đơn vị nội dung để bảo đảm các câu cùng bài đọc/tư liệu vẫn nằm cùng nhau. Có thể random thứ tự các nhóm stimulus trong Session, nhưng không được tách riêng từng câu khỏi nhóm stimulus của nó.
+
+10.3. Option order
+
+Các options của SELECT và GROUP_SELECT được random khi bắt đầu bài. Random này chỉ tác động tới thứ tự hiển thị, không làm thay đổi correct_answer chuẩn.
+
+10.4. Display number
+
+Sau khi random, hệ thống tạo số thứ tự hiển thị mới theo đúng vị trí thực tế trên giao diện: Q1, Q2, Q3, ...
+
+Display number là dữ liệu trình bày và được tạo sau random. Không được dùng source q_num để hiển thị. Không được có tình trạng một câu mang số 1 xuất hiện sau câu mang số 8 do giữ nguyên q_num cũ.
+
+q_num vẫn được giữ trong dữ liệu nguồn để truy nguyên, nhưng không được dùng làm khóa answer state.
+
+11. HỆ THỐNG ĐỊNH DANH NỘI BỘ
+
+questionId phải là khóa duy nhất và bất biến đối với câu hỏi trong một test.
+
+sessionId có thể được tạo nội bộ theo testId, session position và session order hoặc một ID kỹ thuật tương đương.
+
+stimulusId có thể được tạo cho nhóm stimulus nếu cần cho rendering.
+
+displayNumber chỉ phục vụ giao diện.
+
+sourceQNum là q_num từ Excel.
+
+Không được dùng displayNumber hoặc sourceQNum làm primary key của answer state.
+
+Một ví dụ khóa kỹ thuật hợp lệ có thể là TEST001::S2::Q17 cho questionId, nhưng implementation có thể dùng format khác miễn bảo đảm uniqueness và stability.
+
+12. ANSWER STATE VÀ CÁCH LƯU CÂU TRẢ LỜI
+
+activeSession.userAnswers phải là map theo questionId, không theo q_num.
+
+Ví dụ logic:
+userAnswers = {
+  "TEST001::S1::Q3": "Option B",
+  "TEST001::S1::Q4": "because",
+  "TEST001::S2::Q2": "This is my rewritten sentence"
+}
+
+SELECT và GROUP_SELECT lưu text value thực tế của option, không lưu nhãn A/B/C/D.
+
+FILL, REWRITE và REORDER lưu text người dùng nhập.
+
+Khi chuyển Session, câu trả lời phải giữ nguyên 100% trong memory. Render lại UI không được làm mất câu trả lời.
+
+13. CÁC MECHANIC CỦA CÂU HỎI
+
+13.1. SELECT
+
+SELECT là câu trắc nghiệm một đáp án.
+
+options được parse từ ; hoặc |, sau đó trim và loại phần tử rỗng. Nếu option có prefix như A., B., C., D. thì phải loại prefix trước khi lưu canonical option. Nhãn A/B/C/D chỉ được sinh khi render.
+
+Mỗi câu phải có radio group name duy nhất theo questionId, không dùng một name chung cho cả bài.
+
+Khi chọn một option, chỉ radio của chính câu đó được thay đổi.
+
+13.2. GROUP_SELECT
+
+GROUP_SELECT là câu trắc nghiệm dùng chung stimulus hoặc passage.
+
+Những câu có cùng stimulus trong cùng Session phải được render cùng một nhóm nội dung, trong đó stimulus hiển thị một lần ở vùng chung và các câu tương ứng hiển thị bên dưới.
+
+Logic đáp án giống SELECT.
+
+13.3. FILL
+
+FILL dùng text input.
+
+correct_answer có thể có nhiều đáp án bằng ; hoặc |.
+
+Khi chấm, hệ thống phải normalize câu trả lời người dùng bằng trim và chuyển lowercase. Danh sách accepted answers cũng phải được normalize tương ứng.
+
+Các phần tử rỗng sau split phải bị loại bỏ.
+
+Nếu user không nhập gì thì câu đó sai, trừ khi có một quy tắc nghiệp vụ khác được chỉ rõ trong dữ liệu, hiện không có quy tắc như vậy.
+
+13.4. REWRITE
+
+REWRITE dùng textarea.
+
+Hệ thống không tự động quyết định đúng/sai bằng string comparison. Sau khi submit, câu REWRITE đi vào màn hình self-grading.
+
+Người dùng lựa chọn “Tôi làm Đúng” hoặc “Tôi làm Sai”.
+
+Đúng được tính 1 điểm. Sai được tính 0 điểm.
+
+Không có partial credit.
+
+Nếu người dùng chưa tự chấm mà rời ứng dụng sau khi submit, tất cả REWRITE chưa được đánh dấu phải được tính là Sai. Quy tắc này bảo đảm việc submit đã làm cho bài trở thành completed nhưng không cho phép một câu chưa tự chấm tồn tại vô thời hạn.
+
+13.5. REORDER
+
+REORDER dùng text input.
+
+Khi chấm, normalize whitespace: trim đầu/cuối, collapse mọi chuỗi whitespace liên tiếp thành một khoảng trắng và chuyển về lowercase để so sánh.
+
+Hai câu chỉ được xem là giống nhau theo quy tắc normalized exact match. Không dùng AI và không đánh giá ngữ nghĩa.
+
+14. TIMER ENGINE
+
+Timer phải dựa trên timestamp, không phụ thuộc vào việc setInterval chạy chính xác từng giây.
+
+Đối với time_limit > 0, hệ thống tính remaining = timeLimitSeconds - effectiveElapsedSeconds.
+
+Đối với time_limit = 0, hiển thị elapsed time tăng dần.
+
+Timer phải bao gồm cơ chế pause. Khi paused = true, elapsed time không tăng.
+
+Nếu môi trường chạy bị lag, việc cập nhật UI có thể chậm nhưng thời gian logic phải được tính lại từ timestamp.
+
+15. PAUSE / RESUME
+
+Pause là tính năng tạm dừng bài đang làm. Khi pause, timer dừng và toàn bộ answer state vẫn giữ trong memory.
+
+Pause không tạo một unfinished-attempt record trong persistent storage.
+
+Người dùng phải tiếp tục trong cùng phiên ứng dụng đang mở. Resume tiếp tục từ đúng Session, đúng câu, đúng đáp án và đúng trạng thái timer trước đó.
+
+Nếu người dùng refresh trang, đóng tab, đóng trình duyệt hoặc làm mất runtime trước khi submit thì active session bị hủy và không có kết quả nào được lưu.
+
+Pause không thay đổi quy tắc “mỗi bài chỉ hoàn thành một lần”.
+
+16. NAVIGATION TRONG BÀI
+
+Runner phải cho phép chuyển Session trước/sau.
+
+Mỗi Session hiển thị liên tục trong vùng scroll của Session đó.
+
+Tất cả answer state phải được giữ trong activeSession trước khi chuyển.
+
+Có thể có question navigator hoặc trạng thái tiến độ để người dùng nhanh chóng biết câu nào đã làm, chưa làm hoặc đánh dấu xem lại. Đây là điều hướng nội bộ, không phải hệ thống mistake review.
+
+Nút “Kiểm tra câu trống” phải tìm câu chưa có câu trả lời đầu tiên trong Session hiện tại, scroll tới câu đó và highlight trong thời gian ngắn.
+
+17. PREVENT ACCIDENTAL EXIT
+
+Khi có activeSession chưa submit, ứng dụng phải cảnh báo khi người dùng cố rời phiên hiện tại thông qua UI nội bộ.
+
+Khi browser hỗ trợ beforeunload, có thể kích hoạt cảnh báo trình duyệt. Tuy nhiên hệ thống không được phụ thuộc hoàn toàn vào beforeunload để lưu dữ liệu vì active attempt không được phép persist.
+
+Nếu user xác nhận rời, active session bị hủy.
+
+Nếu activeSession đã submit, không cần cảnh báo theo logic unfinished-test.
+
+18. SUBMIT FLOW
+
+Khi user bấm Nộp bài, hệ thống phải hiển thị dialog xác nhận.
+
+Sau khi xác nhận submit, hệ thống phải chụp snapshot câu trả lời hiện tại và xác định bài đã hoàn thành.
+
+Không được tạo cơ chế cho phép submit lại nhiều lần.
+
+Tất cả câu auto-grade được chấm ngay.
+
+Nếu có REWRITE, màn hình self-grading xuất hiện. Bài đã thuộc trạng thái completed từ góc độ one-attempt rule, nhưng score chính thức phải được chốt với quy tắc mặc định REWRITE chưa tự chấm = sai.
+
+Nếu không có REWRITE, kết quả được chốt và lưu ngay.
+
+Nếu hết thời gian, hệ thống tự động submit theo cùng một logic. Các câu chưa trả lời được tính sai. REWRITE chưa tự chấm được tính sai.
+
+19. KẾT QUẢ VÀ TÍNH ĐIỂM
+
+Mỗi câu có trọng số mặc định 1 điểm.
+
+Tổng câu hỏi là tổng số câu của test sau khi parse, không thay đổi bởi randomization.
+
+correctCount là số câu được xác định đúng.
+
+scorePercent = correctCount / totalQuestions * 100.
+
+REWRITE đúng = 1, REWRITE sai = 0. Không partial credit.
+
+Tất cả mechanic khác được chấm theo exact deterministic rule tương ứng.
+
+Nếu totalQuestions = 0 thì dữ liệu phải bị reject ngay từ import, không được tạo test rỗng.
+
+20. MÀN HÌNH SELF-GRADING
+
+Nếu có REWRITE, màn hình self-grading phải hiển thị tối thiểu prompt, câu người dùng đã viết, đáp án chuẩn/gợi ý và nút Đúng/Sai.
+
+Trạng thái tự chấm phải được lưu trong activeSession cho tới khi chốt kết quả.
+
+Mỗi câu REWRITE phải có trạng thái rõ ràng: correct, incorrect hoặc pending.
+
+Pending cuối cùng không được phép tồn tại trong completion summary. Khi người dùng rời sau submit mà chưa tự chấm, pending phải được chuyển thành incorrect.
+
+21. REVIEW TRONG 72 GIỜ
+
+Sau khi hoàn thành, người dùng có thể xem lại bài trong 72 giờ kể từ submittedAt.
+
+Review hiển thị toàn bộ câu hỏi theo thứ tự đã làm, tức thứ tự sau random, không quay trở lại thứ tự q_num gốc.
+
+Mỗi câu hiển thị trạng thái Đúng hoặc Sai, câu trả lời người dùng, đáp án chuẩn khi phù hợp, stimulus nếu cần và explanation nếu có.
+
+Không cần một hệ thống mistake review riêng. Review bài hoàn thành đã đủ cho nhu cầu này.
+
+Không cần hiển thị phân tích thời gian từng câu.
+
+22. RETENTION 72 GIỜ
+
+EPHEMERAL_MS = 72 * 60 * 60 * 1000.
+
+Cleanup phải được thực hiện ít nhất khi app khởi động, khi quay về Dashboard, sau restore và trước khi render dữ liệu lịch sử.
+
+Nếu Date.now() - submittedAt >= EPHEMERAL_MS, chi tiết của completion phải bị xóa.
+
+Summary không bị xóa.
+
+Màn hình Dashboard chỉ liệt kê các bài còn detail trong 72 giờ. Các summary hết hạn không được hiện thành danh sách vì sẽ làm giao diện dài và lộn xộn.
+
+Summary hết hạn vẫn được dùng để tính aggregate statistics.
+
+23. TIMESTAMP VÀ TIMEZONE
+
+Mọi thời điểm nghiệp vụ phải lưu timestamp chuẩn hóa.
+
+Khuyến nghị lưu epoch milliseconds và ISO UTC. Đồng thời có thể lưu timezone IANA của thiết bị tại thời điểm submit và offset minutes để dễ hiển thị và audit.
+
+UI hiển thị theo local timezone của máy người dùng.
+
+Không được lưu timestamp dưới dạng chuỗi địa phương không có timezone rồi dùng trực tiếp để tính hạn 72 giờ.
+
+24. DASHBOARD
+
+Dashboard là màn hình chính và phải giữ trải nghiệm trực quan, giàu thông tin, không được làm nghèo giao diện hiện tại.
+
+Dashboard cần có phần tổng quan chính với ít nhất: điểm trung bình, xu hướng điểm, số bài đang chờ, số bài đã hoàn thành và tổng thời gian làm bài.
+
+Có thể dùng Radial Gauge, Sparkline/Trendline và Quick Stats theo giao diện hiện tại.
+
+Điểm trung bình được tính trên completedSummary lâu dài, bao gồm cả các bài đã qua 72 giờ.
+
+Xu hướng có thể sử dụng các bài hoàn thành gần nhất theo submittedAt.
+
+Hàng chờ hiển thị FIFO.
+
+Lịch sử chỉ hiển thị các bài còn detail dưới 72 giờ. Không liệt kê archive cũ.
+
+Thông báo sau khi lưu kết quả phải xuất hiện. Tối thiểu là một in-app toast/notification xác nhận bài đã được lưu. Browser Notification API chỉ là tùy chọn và không được làm chức năng lõi phụ thuộc vào quyền hệ điều hành.
+
+25. XÓA BÀI CHỜ
+
+Mỗi queue card phải có nút xóa nhỏ, trực quan nhưng không gây nhầm với “Làm bài ngay”.
+
+Khi click, dialog xác nhận phải cho biết tên bài và test_id.
+
+Chỉ sau khi user xác nhận, bài mới bị loại khỏi uncompletedTests.
+
+Sau khi xóa thành công, Dashboard phải render lại và có thể hiện toast thông báo.
+
+Không được xóa completedSummary bằng nút này.
+
+26. IMPORT PREVIEW VÀ VALIDATION FEEDBACK
+
+Sau khi chọn Excel, ứng dụng phải đọc, parse và validate trước khi thay đổi persistent state.
+
+Nếu file có lỗi, hệ thống phải báo rõ lỗi theo dòng và trường. Không thêm một phần dữ liệu lỗi vào queue.
+
+Nếu file hợp lệ, hệ thống có thể hiển thị tóm tắt trước import gồm số test, số session, số câu và các test_id sẽ được nạp.
+
+Nếu có duplicate ID phải hiện rõ danh sách ID được tự động đổi.
+
+Import phải là thao tác nguyên tử ở mức dữ liệu ứng dụng: parse và validate hoàn tất trước, sau đó mới append vào queue.
+
+27. BACKUP VÀ RESTORE BẰNG EXCEL
+
+Toàn bộ dữ liệu ứng dụng phải có thể backup/restore bằng Excel. Không yêu cầu JSON/CSV/TXT/ZIP.
+
+Backup khuyến nghị dùng một file .xlsx với các sheet logic:
+
+UNCOMPLETED_TESTS: dữ liệu các bài đang chờ.
+
+COMPLETED_SUMMARY: summary của các bài đã hoàn thành.
+
+EPHEMERAL_DETAILS: chi tiết các bài còn trong thời hạn xem lại.
+
+Có thể bổ sung METADATA hoặc VERSION nếu cần cho migration, nhưng không được làm mất ba nhóm dữ liệu cốt lõi.
+
+Restore phải có dialog xác nhận rõ rằng dữ liệu hiện tại sẽ được thay thế.
+
+Restore phải parse toàn bộ file trước, validate cấu trúc và chỉ áp dụng khi file backup hợp lệ.
+
+Restore phải cleanup dữ liệu hết hạn ngay sau khi nạp để không vô tình gia hạn 72 giờ chỉ vì restore.
+
+Restore nên có tính nguyên tử: nếu parse hoặc validation lỗi, dữ liệu hiện tại không được thay đổi.
+
+28. KHÔNG CÓ IMPORT HISTORY / UNDO
+
+Hệ thống không cần lưu lịch sử mỗi lần import và không cần undo import.
+
+Nếu người dùng import nhầm một bài chưa làm, có thể dùng nút xóa queue item.
+
+Nếu import trùng ID, hệ thống tự tạo ID hậu tố để tránh ghi đè.
+
+29. GIAO DIỆN VÀ RESPONSIVE DESIGN
+
+Giao diện phải giữ tinh thần hiện tại: dark mode, cyan accent, card UI, dashboard trực quan, typography rõ ràng, runner có sticky control bar và modal/dialog hiện đại.
+
+Không được loại bỏ các thành phần trực quan đang tạo giá trị chỉ để làm giao diện “đơn giản hơn”. Việc reorganize chỉ nhằm tăng usability.
+
+Desktop, tablet và mobile phải sử dụng cùng một mô hình nghiệp vụ. Layout phải responsive bằng CSS/grid/flex, không xây dựng ba ứng dụng khác nhau.
+
+Header phải có các thao tác quan trọng với vùng chạm đủ lớn trên mobile.
+
+Không phụ thuộc drag-and-drop cho chức năng cốt lõi.
+
+30. ACCESSIBILITY VÀ UX
+
+Mọi nút có icon phải có accessible label hoặc tooltip phù hợp.
+
+Radio, input và textarea phải có label hoặc quan hệ accessible rõ ràng.
+
+Focus state phải nhìn thấy khi dùng bàn phím.
+
+Màu sắc trạng thái không được là tín hiệu duy nhất; nên có icon hoặc text Đúng/Sai.
+
+Không dùng animation gây khó chịu hoặc ngăn người dùng thao tác.
+
+Modal xác nhận phải có thao tác hủy rõ ràng và không được thực hiện hành động destructive chỉ bằng một click vô tình.
+
+31. STORAGE VÀ TÍNH BỀN VỮNG KIẾN TRÚC
+
+Lớp storage phải được cô lập khỏi domain logic để có thể thay LocalStorage bằng IndexedDB trong tương lai nếu dung lượng dữ liệu lớn hơn dự kiến.
+
+Nếu triển khai với LocalStorage, phải dùng một storage key ổn định như ENG_TEST_ENGINE_DATA và một key riêng cho theme như ENG_TEST_THEME.
+
+Persistent state chỉ gồm dữ liệu queue, completed summary và ephemeral details; activeSession không nằm trong persistent state.
+
+Mọi lần mutate persistent data phải theo chu trình: cập nhật state hợp lệ -> serialize -> ghi storage -> render lại UI.
+
+32. ERROR HANDLING
+
+Lỗi import, restore, parse Excel, storage hoặc render không được làm crash toàn bộ ứng dụng.
+
+Các lỗi dự kiến phải được bắt và hiển thị bằng thông báo thân thiện cho người dùng, đồng thời log chi tiết ở console để debug.
+
+Các thao tác destructive như xóa queue và restore phải có confirmation.
+
+Nếu storage parse JSON thất bại, ứng dụng phải có cơ chế fail-safe: không tự ý ghi đè dữ liệu hỏng bằng state rỗng nếu chưa có chiến lược recovery.
+
+33. HTML ESCAPING VÀ AN TOÀN DỮ LIỆU UI
+
+Mọi text lấy từ Excel hoặc user input khi chèn bằng innerHTML phải được escape HTML.
+
+Không được để nội dung Excel trực tiếp trở thành HTML.
+
+Không được nhúng dữ liệu người dùng vào inline JavaScript theo cách gây injection.
+
+Nếu có thể, ưu tiên textContent cho nội dung text đơn giản và chỉ dùng innerHTML cho template đã kiểm soát với escapeHtml đầy đủ.
+
+34. JAVASCRIPT TEMPLATE LITERALS
+
+Trong template literal JavaScript, tuyệt đối không đặt backslash trước biểu thức ${...} khi mục tiêu là interpolation.
+
+Ví dụ đúng: `${value}`.
+
+Ví dụ sai: `\${value}` nếu mục tiêu là render giá trị.
+
+Đây là quy tắc bắt buộc vì lỗi escaping kiểu này từng gây ra các template render sai dù cú pháp JavaScript vẫn có thể parse.
+
+35. RADIO GROUP ISOLATION
+
+Mỗi câu SELECT/GROUP_SELECT phải có radio group name độc nhất theo questionId.
+
+Không dùng q_num làm name nếu có khả năng q_num lặp giữa Session.
+
+Không dùng một name chung cho tất cả câu trong bài.
+
+36. NORMALIZATION HELPERS
+
+Phải có các hàm chuẩn hóa dùng thống nhất thay vì lặp logic ở nhiều nơi.
+
+normalizeText: trim + lowercase cho so khớp đơn giản.
+
+normalizeWhitespace: trim + collapse whitespace + lowercase cho REORDER.
+
+normalizeOptionText: trim và bỏ nhãn option như A./B./C./D. theo quy tắc.
+
+splitDelimitedValues: split bằng ; hoặc |, trim từng phần và filter(Boolean).
+
+Các helper này phải được dùng nhất quán ở cả import và grading.
+
+37. RENDERING VÀ STATE CONSISTENCY
+
+UI không được coi DOM là nguồn dữ liệu chính. State là nguồn sự thật.
+
+Khi user thao tác input, state phải được cập nhật ngay.
+
+Khi render lại Session, UI phải lấy dữ liệu từ state và không reset input ngoài ý muốn.
+
+Khi chuyển view, state vẫn phải được giữ nguyên cho tới khi workflow yêu cầu clear.
+
+38. TRẠNG THÁI NGHIỆP VỤ CỦA TEST
+
+Một test có thể ở một trong các trạng thái logic sau:
+
+QUEUED: đã import, chưa bắt đầu.
+
+ACTIVE: đang làm trong runtime hiện tại.
+
+PAUSED: active nhưng timer tạm dừng.
+
+SUBMITTED: đã submit và đang hoàn tất self-grading nếu cần.
+
+COMPLETED: summary đã được chốt và lưu.
+
+EXPIRED_DETAIL: completed nhưng detail 72 giờ đã bị xóa; summary vẫn tồn tại.
+
+DELETED_FROM_QUEUE: bài chưa làm đã bị user xóa. Trạng thái này không cần lưu lịch sử; chỉ là kết quả của thao tác xóa.
+
+Không được có trạng thái persistent “unfinished attempt” sau khi reload.
+
+39. QUY TẮC QUAN TRỌNG VỀ RỜI BÀI
+
+Nếu user rời bài trước khi submit, bài không được tính hoàn thành, không tạo summary, không tạo history và không ghi detail.
+
+Nếu user đã submit, bài được xem là hoàn thành về mặt one-attempt rule.
+
+Nếu submit xong nhưng user chưa tự chấm REWRITE rồi rời trang, REWRITE pending mặc định thành incorrect. Summary vẫn được lưu.
+
+Nếu user chỉ mở Preview rồi quay lại, không có attempt và không có kết quả.
+
+40. THỐNG KÊ DÀI HẠN
+
+Aggregate statistics lấy nguồn từ completedSummary.
+
+Không hiển thị danh sách archive dài hạn trên màn hình.
+
+Có thể cung cấp các chỉ số như average score, recent trend, completed count, total study time hoặc phân phối điểm. Không cần dashboard liệt kê từng archive item đã hết hạn.
+
+Các số liệu tổng hợp phải được tính từ dữ liệu đã lưu chứ không dựa vào nội dung detail có thể đã bị cleanup.
+
+41. KHÔNG CÓ AI VÀ KHÔNG TỰ ĐỘNG “THÔNG MINH HÓA” NỘI DUNG
+
+Hệ thống là một data filtering/display/execution engine.
+
+Không được tự viết lại prompt, tự sửa đáp án, tự đoán correct_answer, tự tạo option, tự sinh explanation hoặc tự chấm REWRITE bằng semantic AI.
+
+Mọi nội dung do Excel cung cấp phải được coi là nguồn chuẩn.
+
+42. CHECKLIST BẮT BUỘC TRƯỚC KHI PHÁT HÀNH
+
+Trước khi giao một build mới, phải kiểm tra ít nhất các nhóm sau:
+
+A. App khởi động không có JavaScript exception.
+B. Dashboard render được kể cả khi storage rỗng.
+C. Import Excel 11 cột thành công.
+D. Validation mechanic hoạt động đúng.
+E. Duplicate test_id tự hậu tố đúng.
+F. Queue giữ FIFO.
+G. Nút xóa queue hỏi xác nhận và xóa đúng bài.
+H. Preview không tạo completion.
+I. Session giữ đúng thứ tự Excel.
+J. Questions chỉ random trong Session.
+K. Options random nhưng answer key không thay đổi.
+L. Display number được sinh lại sau shuffle.
+M. answer state dùng questionId.
+N. SELECT radio group không xung đột.
+O. FILL chấp nhận nhiều đáp án theo ; hoặc |.
+P. REORDER normalize whitespace + lowercase.
+Q. REWRITE self-grading đúng/sai và pending cuối cùng = sai.
+R. Pause dừng timer và resume đúng trạng thái.
+S. Refresh/close trước submit không lưu kết quả.
+T. Submit sau đó luôn tạo completion summary.
+U. Hết giờ tự submit.
+V. Review hoạt động trong 72 giờ.
+W. Detail quá 72 giờ bị cleanup nhưng summary vẫn còn.
+X. Archive summary không xuất hiện thành danh sách trên Dashboard.
+Y. Backup Excel chứa đủ dữ liệu cần thiết.
+Z. Restore không làm thay đổi dữ liệu nếu file backup lỗi.
+AA. Timestamp được chuẩn hóa.
+AB. HTML escaping được áp dụng.
+AC. Không còn template interpolation bị escape sai.
+AD. Không còn tham chiếu tới method không tồn tại.
+AE. Layout hoạt động trên desktop/tablet/mobile.
+
+43. CẤU TRÚC MODULE ĐỀ XUẤT
+
+Để bảo trì lâu dài, code nên được tổ chức theo các module logic sau ngay cả khi cuối cùng được bundle vào một file HTML:
+
+UI Shell: header, dashboard, preview, runner, self-grading, review, dialogs, toast.
+
+Import Parser: đọc workbook, validate headers, validate rows, group test/session, tạo questionId.
+
+Domain Model: Test, Session, Question, Completion Summary, Ephemeral Detail.
+
+Queue Manager: FIFO queue, delete queue item, duplicate ID handling.
+
+Runner Engine: activeSession, randomization, display numbering, answer state, navigation.
+
+Timer Engine: timestamp-based elapsed calculation, pause/resume, timeout submit.
+
+Grading Engine: SELECT, GROUP_SELECT, FILL, REORDER, REWRITE self-grade.
+
+Persistence Layer: serialize/deserialize persistent state, cleanup 72h, migration.
+
+Backup/Restore: Excel export/import.
+
+Analytics: aggregate summary calculations.
+
+UI Feedback: confirmation dialogs, warnings, toast notifications.
+
+Các module phải phụ thuộc một chiều hợp lý và không được tạo vòng lặp logic khó kiểm soát.
+
+44. MIGRATION VÀ TƯƠNG THÍCH DỮ LIỆU CŨ
+
+Nếu phiên bản mới thay đổi cấu trúc persistent data, phải có migration layer.
+
+Migration có thể chuyển q_num-based answer state hoặc dữ liệu cũ sang questionId-based model nếu dữ liệu nguồn đủ để xác định mapping. Nếu không đủ thông tin, không được đoán bừa; phải đánh dấu dữ liệu cần reset hoặc đưa ra cảnh báo rõ ràng.
+
+Migration không được làm mất completedSummary hợp lệ.
+
+45. CÁC QUYẾT ĐỊNH ĐÃ CHỐT VỀ PHẠM VI
+
+English Test Engine là app cá nhân, không có user roles.
+
+Một test chỉ có một attempt hoàn thành.
+
+Không có retake trong hệ thống.
+
+Muốn làm lại cùng nội dung phải import lại và đổi test_id.
+
+Không có test library lớn, search/filter nâng cao hoặc import history.
+
+FIFO queue là mô hình hàng chờ chính.
+
+Có nút xóa nhỏ cho bài chưa làm và bắt buộc xác nhận.
+
+Pause chỉ là trạng thái runtime tạm thời.
+
+Không persist unfinished attempt.
+
+Session giữ nguyên thứ tự Excel.
+
+Question chỉ random trong Session.
+
+Options có thể random.
+
+Display numbering được tạo lại sau random.
+
+q_num chỉ là source metadata.
+
+REWRITE chấm hoàn toàn theo self-grading đúng/sai.
+
+Không partial credit.
+
+Chi tiết review chỉ giữ 72 giờ.
+
+Summary giữ lâu dài để thống kê.
+
+Archive summary không liệt kê trên UI.
+
+Excel là định dạng dữ liệu duy nhất của import/export/backup/restore.
+
+Không dùng AI.
+
+UI phải giữ phong cách hiện tại và được nâng cấp, không được giản lược theo hướng làm mất độ trực quan.
+
+Dashboard là trung tâm tổng quan.
+
+Responsive trên desktop, tablet và mobile.
+
+Validation Excel phải mang tính điều kiện/quan hệ theo mechanic.
+
+Timestamp phải chuẩn hóa theo UTC và timezone.
+
+Sau khi lưu kết quả phải có thông báo cho người dùng.
+
+46. TIÊU CHUẨN HOÀN THÀNH SẢN PHẨM
+
+Một build chỉ được xem là đạt yêu cầu khi toàn bộ quy tắc nghiệp vụ trong tài liệu này có thể kiểm chứng bằng thao tác thực tế, không chỉ bằng việc code có cú pháp hợp lệ.
+
+Đặc biệt, việc kiểm tra không được dừng ở node --check hoặc static syntax. Phải kiểm tra cả khởi tạo DOM, event binding, import Excel, render Dashboard, preview, runner, timer, pause/resume, chuyển Session, answer persistence, submit, self-grading, review, cleanup 72 giờ, backup/restore và các thao tác destructive.
+
+Tất cả tính năng mới phải được kiểm thử cùng toàn bộ luồng hiện hữu để tránh sửa một phần làm hỏng phần khác.
+
+47. KẾT LUẬN KIẾN TRÚC
+
+Kiến trúc cuối cùng của English Test Engine ưu tiên sự đơn giản có kiểm soát: một ứng dụng cá nhân, một Dashboard trung tâm, một FIFO queue, một active session tại một thời điểm, một lần hoàn thành cho mỗi test, persistent summary lâu dài và detail tạm thời 72 giờ.
+
+Sự đơn giản này không đồng nghĩa với logic lỏng lẻo. Ngược lại, toàn bộ định danh, validation, randomization, timer, submit, self-grading, retention và persistence phải được định nghĩa rõ ràng và tách biệt để ngăn lỗi phát sinh.
+
+Hệ thống phải coi dữ liệu Excel là nguồn nội dung chuẩn, coi domain state là nguồn sự thật của giao diện và coi các rule deterministic là nền tảng của grading. Mọi chức năng chỉ được thêm khi phục vụ trực tiếp nhu cầu sử dụng cá nhân, không biến ứng dụng thành một hệ thống LMS hoặc test management quá phức tạp.
+
+Tài liệu này là chuẩn kỹ thuật hợp nhất hiện hành cho English Test Engine và phải được dùng làm căn cứ khi sửa code, viết lại code, thêm tính năng, thiết kế test case và đánh giá build.

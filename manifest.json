@@ -1,0 +1,22 @@
+{
+  "short_name": "ThiTiengAnh",
+  "name": "Hệ thống Thi Tiếng Anh Offline",
+  "icons": [
+    {
+      "src": "icon.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait",
+  "description": "Ứng dụng luyện thi Tiếng Anh chạy Offline 100% trên Safari iOS / PWA"
+}
