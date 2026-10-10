@@ -59,13 +59,70 @@
       pointer-events: none;
       user-select: none;
     }
+    /* Lưới đáp án trắc nghiệm:
+       - Mặc định 2 cột, kể cả trên điện thoại nếu đáp án ngắn.
+       - Đáp án dài chuyển thành một cột.
+    */
+    .answer-options-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.625rem;
+      width: 100%;
+      min-width: 0;
+    }
+    
+    .answer-options-grid > label {
+      min-width: 0;
+      max-width: 100%;
+      align-items: flex-start;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
+    
+    .answer-options-grid > label > input {
+      flex: 0 0 auto;
+      margin-top: 0.15rem;
+    }
+    
+    .answer-options-grid > label > span {
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+    
+    /* Khi đáp án dài, hiển thị từng đáp án trên một hàng. */
+    .answer-options-grid.is-stacked {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    
+    /* Ngăn nội dung dài làm tràn thẻ câu hỏi. */
+    #runnerQuestionsContainer,
+    #runnerQuestionsContainer > *,
+    #runnerQuestionsContainer .q-input-area {
+      min-width: 0;
+      max-width: 100%;
+    }
+    
+    #runnerQuestionsContainer img,
+    #runnerQuestionsContainer table,
+    #runnerQuestionsContainer pre {
+      max-width: 100%;
+    }
+    
+    #runnerQuestionsContainer table,
+    #runnerQuestionsContainer pre {
+      overflow-x: auto;
+    }
+    
   </style>
 </head>
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen font-sans antialiased flex flex-col justify-between transition-colors duration-200 selection:bg-cyan-500 selection:text-white">
 
   <!-- ==================== HEADER HỆ THỐNG ==================== -->
   <header class="bg-white/80 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700/60 sticky top-0 z-40 transition-colors">
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 min-h-16 h-auto py-2 flex items-center justify-between gap-2">
       
       <!-- LOGO -->
       <div class="flex items-center gap-2.5 cursor-pointer shrink-0" onclick="app.navToDashboard()">
@@ -1243,15 +1300,50 @@
         if (q.mechanic === 'SELECT' || q.mechanic === 'GROUP_SELECT') {
           const opts = q.shuffledOptions || q.options || [];
           const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-          return `<div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">${opts.map((opt, idx) => {
-            const cleanText = this.normalizeOptionText(opt);
-            const letter = optionLetters[idx] || String(idx + 1);
-            const isChecked = this.normalizeText(userAns) === this.normalizeText(cleanText);
-            return `<label class="flex items-center gap-3 p-3 rounded-xl border ${isChecked ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/40 text-cyan-900 dark:text-cyan-100 font-semibold' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-700 dark:text-slate-200'} hover:border-slate-400 dark:hover:border-slate-600 transition cursor-pointer">
-              <input type="radio" name="q_${key}" value="${this.escapeHtml(cleanText)}" ${isChecked ? 'checked' : ''} class="text-cyan-500 focus:ring-0">
-              <span class="text-xs"><strong class="text-cyan-600 dark:text-cyan-400 mr-1">${this.escapeHtml(letter)}.</strong> ${this.escapeHtml(cleanText)}</span>
-            </label>`;
-          }).join('')}</div>`;
+        
+          // Nếu có đáp án dài, ưu tiên bố cục một cột.
+          // Ngưỡng này có thể điều chỉnh theo dữ liệu đề thi thực tế.
+          const hasLongOption = opts.some(opt => {
+            const text = this.normalizeOptionText(opt);
+            const words = text.trim().split(/\s+/).filter(Boolean);
+        
+            return text.length > 36 || words.some(word => word.length > 22);
+          });
+        
+          return `
+            <div class="answer-options-grid ${hasLongOption ? 'is-stacked' : ''}">
+              ${opts.map((opt, idx) => {
+                const cleanText = this.normalizeOptionText(opt);
+                const letter = optionLetters[idx] || String(idx + 1);
+                const isChecked =
+                  this.normalizeText(userAns) === this.normalizeText(cleanText);
+        
+                return `
+                  <label class="flex items-start gap-3 p-3 rounded-xl border ${
+                    isChecked
+                      ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/40 text-cyan-900 dark:text-cyan-100 font-semibold'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-700 dark:text-slate-200'
+                  } hover:border-slate-400 dark:hover:border-slate-600 transition cursor-pointer">
+        
+                    <input
+                      type="radio"
+                      name="q_${key}"
+                      value="${this.escapeHtml(cleanText)}"
+                      ${isChecked ? 'checked' : ''}
+                      class="text-cyan-500 focus:ring-0"
+                    >
+        
+                    <span class="text-xs">
+                      <strong class="text-cyan-600 dark:text-cyan-400 mr-1">
+                        ${this.escapeHtml(letter)}.
+                      </strong>
+                      ${this.escapeHtml(cleanText)}
+                    </span>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          `;
         }
         if (q.mechanic === 'FILL') {
           return `<input type="text" value="${this.escapeHtml(userAns)}" data-answer-key="${key}" placeholder="Nhập từ/cụm từ thích hợp..." class="answer-input w-full bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:border-cyan-500 focus:outline-none transition">`;
@@ -1350,12 +1442,32 @@
         const result = this.buildAttemptResult(allQuestions, defaultSelfGrade);
         
         if (!this.persistCompletedAttempt(result)) {
-          if (!isAutoSubmit) {
+          // Giữ phiên thi để có thể thử nộp lại.
+          session.submitted = false;
+        
+          if (isAutoSubmit) {
+            // Đã hết giờ: dừng đồng hồ và không tự gọi submitTest lặp lại.
+            if (session.timerInterval) {
+              clearInterval(session.timerInterval);
+            }
+        
+            session.timerInterval = null;
+            session.timeSpentSeconds = Math.max(
+              Number(session.timeSpentSeconds) || 0,
+              Number(session.testData.timeLimit) * 60 || 0
+            );
+        
+            const timer = document.getElementById('runnerTimer');
+            if (timer) timer.textContent = '00:00';
+          } else {
+            // Chỉ tiếp tục đếm giờ nếu vẫn còn thời gian.
             this.startTimer();
           }
         
           this.showToast(
-            'Không thể lưu kết quả. Hãy kiểm tra dung lượng trình duyệt rồi thử nộp lại.',
+            isAutoSubmit
+              ? 'Đã hết giờ nhưng chưa lưu được kết quả. Phiên thi vẫn được giữ lại; hãy thử nộp lại sau khi kiểm tra dung lượng trình duyệt.'
+              : 'Không thể lưu kết quả. Phiên thi vẫn được giữ lại; hãy kiểm tra dung lượng trình duyệt rồi thử nộp lại.',
             'warning'
           );
         
@@ -1419,12 +1531,32 @@
         });
 
         const result = this.buildAttemptResult(allQuestions, selfGradeResults, session.submittedAttemptId);
+        const previousSummary = this.state.completedSummary;
+        const previousDetails = this.state.ephemeralDetails;
+        const previousSession = this.state.activeSession;
+        
         this.replaceCompletedAttempt(result);
         this.state.activeSession = null;
-        this.saveStateToStorage();
+        
+        if (!this.saveStateToStorage()) {
+          this.state.completedSummary = previousSummary;
+          this.state.ephemeralDetails = previousDetails;
+          this.state.activeSession = previousSession;
+        
+          this.showToast(
+            'Không thể lưu điểm tự chấm. Dữ liệu trong bộ nhớ đã được hoàn tác; hãy kiểm tra dung lượng trình duyệt và thử lại.',
+            'warning'
+          );
+          return;
+        }
+        
         this.renderReviewView(result.summary.attemptId);
         this.switchView('view-review');
-        this.showToast(`Đã cập nhật kết quả REWRITE: ${result.summary.scorePercent}%`, 'success');
+        
+        this.showToast(
+          `Đã cập nhật kết quả REWRITE: ${result.summary.scorePercent}%`,
+          'success'
+        );
       }
 
       buildAttemptResult(allQuestions, selfGradeResults, existingAttemptId = null) {
@@ -1745,14 +1877,45 @@
                 attemptId,
                 testId,
                 testTitle: String(r.testTitle ?? ''),
-                scorePercent: Number(r.scorePercent) || 0,
-                correctCount: Number(r.correctCount) || 0,
-                totalQuestions: Number(r.totalQuestions) || 0,
-                timeSpentSeconds: Number(r.timeSpentSeconds) || 0,
-                submittedAt: Number(r.submittedAt) || 0,
+              
+                scorePercent: readBackupNumber(
+                  r.scorePercent,
+                  `COMPLETED_SUMMARY dòng ${index + 2}, scorePercent`,
+                  { min: 0, max: 100, integer: true }
+                ),
+              
+                correctCount: readBackupNumber(
+                  r.correctCount,
+                  `COMPLETED_SUMMARY dòng ${index + 2}, correctCount`,
+                  { min: 0, integer: true }
+                ),
+              
+                totalQuestions: readBackupNumber(
+                  r.totalQuestions,
+                  `COMPLETED_SUMMARY dòng ${index + 2}, totalQuestions`,
+                  { min: 0, integer: true }
+                ),
+              
+                timeSpentSeconds: readBackupNumber(
+                  r.timeSpentSeconds,
+                  `COMPLETED_SUMMARY dòng ${index + 2}, timeSpentSeconds`,
+                  { min: 0, integer: true }
+                ),
+              
+                submittedAt: readBackupNumber(
+                  r.submittedAt,
+                  `COMPLETED_SUMMARY dòng ${index + 2}, submittedAt`,
+                  { min: 1 }
+                ),
+              
                 submittedAtUtc: String(r.submittedAtUtc ?? ''),
                 timezone: String(r.timezone ?? ''),
-                timezoneOffsetMinutes: Number(r.timezoneOffsetMinutes) || 0
+              
+                timezoneOffsetMinutes: readBackupNumber(
+                  r.timezoneOffsetMinutes,
+                  `COMPLETED_SUMMARY dòng ${index + 2}, timezoneOffsetMinutes`,
+                  { min: -840, max: 840, integer: true }
+                )
               };
             });
 
@@ -1789,14 +1952,36 @@
             });
 
             // Commit only after every sheet has been parsed and validated successfully.
+            // Lưu trạng thái hiện tại để có thể khôi phục nếu ghi dữ liệu thất bại.
+            const previousState = {
+              uncompletedTests: this.state.uncompletedTests,
+              completedSummary: this.state.completedSummary,
+              ephemeralDetails: this.state.ephemeralDetails,
+              activeSession: this.state.activeSession
+            };
+            
+            // Chỉ thay đổi state sau khi các sheet đã được đọc và kiểm tra.
             this.state.uncompletedTests = restoredUncompleted;
             this.state.completedSummary = restoredSummary;
             this.state.ephemeralDetails = restoredEphemeral;
             this.state.activeSession = null;
+            
+            // Kiểm tra việc lưu trước khi thông báo thành công.
+            if (!this.saveStateToStorage()) {
+              this.state.uncompletedTests = previousState.uncompletedTests;
+              this.state.completedSummary = previousState.completedSummary;
+              this.state.ephemeralDetails = previousState.ephemeralDetails;
+              this.state.activeSession = previousState.activeSession;
+            
+              throw new Error(
+                'Không lưu được dữ liệu khôi phục. Dữ liệu trong bộ nhớ đã được hoàn tác; hãy kiểm tra dung lượng trình duyệt.'
+              );
+            }
+            
             this.cleanupExpiredEphemeralData();
-            this.saveStateToStorage();
             this.renderDashboard();
             this.switchView('view-dashboard');
+            
             alert('Khôi phục dữ liệu từ file sao lưu thành công!');
           } catch (error) {
             console.error(error);
