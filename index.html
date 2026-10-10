@@ -1526,8 +1526,17 @@
         allQuestions.filter(q => q.mechanic === 'REWRITE').forEach(q => {
           const key = this.getAnswerKey(q.questionId);
           const radioName = `sg_${encodeURIComponent(key)}`;
-          const selected = document.querySelector(`input[name="${CSS.escape(radioName)}"]:checked`);
-          selfGradeResults[key] = selected ? selected.value : 'INCORRECT';
+          
+          // SỬA TẠI ĐÂY: Dùng getElementsByName để đọc giá trị radio an toàn
+          const radios = document.getElementsByName(radioName);
+          let selectedValue = 'INCORRECT';
+          for (const radio of radios) {
+            if (radio.checked) {
+              selectedValue = radio.value;
+              break;
+            }
+          }
+          selfGradeResults[key] = selectedValue;
         });
 
         const result = this.buildAttemptResult(allQuestions, selfGradeResults, session.submittedAttemptId);
@@ -1659,8 +1668,13 @@
       }
 
       replaceCompletedAttempt(result) {
-        this.state.completedSummary = this.state.completedSummary.map(s => s.attemptId === result.summary.attemptId ? result.summary : s);
-        this.state.ephemeralDetails[result.summary.attemptId] = result.detail;
+        this.state.completedSummary = [đã xoá đường liên kết đáng ngờ](s => s.attemptId === result.summary.attemptId ? result.summary : s);
+        
+        // SỬA TẠI ĐÂY: Tạo đối tượng mới hoàn toàn để không làm biến đổi dữ liệu cũ
+        this.state.ephemeralDetails = {
+          ...this.state.ephemeralDetails,
+          [result.summary.attemptId]: result.detail
+        };
       }
 
       // Backward-compatible wrapper for any existing internal call sites.
@@ -1842,14 +1856,15 @@
                 throw new Error(`${label}: không được để trống.`);
               }
             
-              const number = Number(raw);
+              let number = Number(raw);
             
               if (!Number.isFinite(number)) {
                 throw new Error(`${label}: giá trị không phải số hợp lệ.`);
               }
             
-              if (options.integer && !Number.isInteger(number)) {
-                throw new Error(`${label}: phải là số nguyên.`);
+              // SỬA TẠI ĐÂY: Tự động làm tròn số thay vì báo lỗi dừng chương trình
+              if (options.integer) {
+                number = Math.round(number);
               }
             
               if (
@@ -1934,7 +1949,9 @@
                 details: []
               };
               }
-              if (Number(restoredEphemeral[attemptId].submittedAt) !== submittedAt) {
+              // SỬA TẠI ĐÂY: Cho phép độ chênh lệch nhẹ dưới 1000ms (1 giây)
+              const timeDiff = Math.abs(Number(restoredEphemeral[attemptId].submittedAt) - submittedAt);
+              if (timeDiff > 1000) {
                 throw new Error(`EPHEMERAL_DETAILS: attempt_id "${attemptId}" có submitted_at không nhất quán.`);
               }
               restoredEphemeral[attemptId].details.push({
@@ -1995,21 +2012,25 @@
     }
 
     const app = new TestEngineApp();
-
-    // Event delegation: answer storage uses internal questionId, never source q_num/session name.
-    document.addEventListener('input', (event) => {
-      const target = event.target;
-      if (!target.matches('#runnerQuestionsContainer .answer-input')) return;
-      if (app.state.activeSession?.submitted) return;
-      app.recordAnswerByKey(target.dataset.answerKey, target.value);
-    });
-
-    document.addEventListener('change', (event) => {
-      const target = event.target;
-      if (!target.matches('#runnerQuestionsContainer input[type="radio"]')) return;
-      if (app.state.activeSession?.submitted) return;
-      app.recordAnswerByKey(target.name.replace(/^q_/, ''), target.value);
-    });
+    
+    // SỬA TẠI ĐÂY: Thêm cờ kiểm tra tránh gán lặp lại sự kiện
+    if (!document.__testEngineEventsBound) {
+      document.__testEngineEventsBound = true;
+    
+      document.addEventListener('input', (event) => {
+        const target = [đã xoá đường liên kết đáng ngờ];
+        if (!target.matches('#runnerQuestionsContainer .answer-input')) return;
+        if (app.state.activeSession?.submitted) return;
+        app.recordAnswerByKey(target.dataset.answerKey, target.value);
+      });
+    
+      document.addEventListener('change', (event) => {
+        const target = [đã xoá đường liên kết đáng ngờ];
+        if (!target.matches('#runnerQuestionsContainer input[type="radio"]')) return;
+        if (app.state.activeSession?.submitted) return;
+        app.recordAnswerByKey([đã xoá đường liên kết đáng ngờ].replace(/^q_/, ''), target.value);
+      });
+    }
 
   </script>
 
