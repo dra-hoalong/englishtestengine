@@ -79,7 +79,8 @@
       </div>
 
       <!-- ACTION BUTTONS TOOLBAR -->
-      <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+      <div class="flex items-center gap-1 sm:gap-2 justify-end shrink-0">
+
         
         <!-- Nút Nạp Đề Thi -->
         <button onclick="document.getElementById('importFileInput').click()" class="px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm">
@@ -256,7 +257,7 @@
     <section id="view-runner" class="app-view hidden space-y-6">
       
       <!-- Sticky Runner Bar -->
-      <div class="bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-2xl p-3 sm:p-4 sticky top-16 sm:top-20 z-30 shadow-xl flex flex-wrap items-center justify-between gap-3">
+      <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-2xl p-2 sm:p-3 sticky top-14 sm:top-16 z-30 shadow-xl flex items-center justify-between gap-1.5 sm:gap-3 w-full">
         <div class="flex items-center gap-3">
           <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-amber-500 font-mono font-bold text-base sm:text-lg">
             <i class="fa-regular fa-clock"></i>
@@ -1241,9 +1242,14 @@
       renderMechanicInput(q, userAns) {
         const key = this.escapeHtml(this.getAnswerKey(q.questionId));
         if (q.mechanic === 'SELECT' || q.mechanic === 'GROUP_SELECT') {
-          const opts = q.shuffledOptions || q.options || [];
-          const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
-          return `<div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">${opts.map((opt, idx) => {
+        const opts = q.shuffledOptions || q.options || [];
+        const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+        
+        // Nếu đáp án > 25 ký tự -> 1 cột (4 hàng). Nếu đáp án ngắn -> 2 cột (2x2) ngay trên điện thoại!
+        const isLongOption = opts.some(opt => this.normalizeOptionText(opt).length > 25);
+        const gridColsClass = isLongOption ? 'grid-cols-1' : 'grid-cols-2';
+        
+        return `<div class="grid ${gridColsClass} gap-2 sm:gap-2.5">${[đã xoá đường liên kết đáng ngờ]((opt, idx) => {
             const cleanText = this.normalizeOptionText(opt);
             const letter = optionLetters[idx] || String(idx + 1);
             const isChecked = this.normalizeText(userAns) === this.normalizeText(cleanText);
